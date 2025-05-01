@@ -77,7 +77,7 @@ export default function Dashboard({ user, onLogout }) {
               <SelectContent>
                 <SelectItem value="current">Current Sprint</SelectItem>
                 <SelectItem value="previous">Previous Sprint</SelectItem>
-                <SelectItem value="all">All Sprints</SelectItem>
+                <SelectItem value="all">All Sprints_</SelectItem>
               </SelectContent>
             </Select>
             <Select value={selectedUser} onValueChange={setSelectedUser}>
