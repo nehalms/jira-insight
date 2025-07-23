@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -34,20 +34,147 @@ import {
   DropdownMenuPortal,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
+import axios from "axios"
 
-export default function Dashboard({ user, onLogout }) {
+export default function Dashboard({ user, onLogout }: {user: any, onLogout: any}) {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  const [projectDropdownValues, setProjectDropdownValues] = useState<{ value: string; label: string }[]>([]);
+  const [sprintDropdownValues, setSprintDropdownValues] = useState<{ value: string; label: string }[]>([]);
+  const [userDropdownValues, setUserDropdownValues] = useState<{ value: string; label: string }[]>([]);
+
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedBoardId, setSelectedBoardId] = useState("");
+  const [selectedSprintId, setSelectedSprintId] = useState("");
+  const [selectedUser, setSelectedUser] = useState("");
+  const [cachedSelectedUser, setCachedSelectedUser] = useState("");
   const [dateRange, setDateRange] = useState("30days")
-  const [project, setProject] = useState("all")
-  const [sprint, setSprint] = useState("current")
-  const [selectedUser, setSelectedUser] = useState("all")
+
+  const [selectProjectDisabled, setSelectProjectDisabled] = useState(false);
+  const [selectSprintDisabled, setSelectSprintDisabled] = useState(true);
+  const [selectUserDisabled, setSelectUserDisabled] = useState(true);
+
   const { theme, setTheme } = useTheme()
 
-  const getInitials = (name) => {
+  const getInitials = (name: string) => {
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase()
+  }
+
+  useEffect(() => {
+    getProjectsDropdownValues();
+  }, []);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      getBoardId(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => { 
+    if (selectedBoardId) {
+      getSprintDropdownValues(selectedBoardId);
+    }
+  }, [selectedBoardId]);
+
+  useEffect(() => {
+    if(selectedSprintId) {
+      getUserDropdowValues(selectedSprintId);
+    }
+  }, [selectedSprintId])
+
+  useEffect(() => {
+    if(selectedUser !== "all")
+      setCachedSelectedUser(selectedUser);
+  }, [selectedUser]);
+
+  const handleTabChange = (value: string) => {
+    if (["charts", "advanced-charts", "calendar"].includes(value)) {
+      setSelectedUser("all");
+      setSelectUserDisabled(true);
+    } else {
+      setSelectedUser(cachedSelectedUser);
+      setSelectUserDisabled(false);
+    }
+  }
+
+  const getProjectsDropdownValues = async () => {
+    try {
+      setSelectProjectDisabled(true);
+      const res = await axios.get(`${API_URL}/projects`);
+      // console.log("Projects Dropdown Values:", res.data);
+      const newOptions = res.data.map((project: any) => ({
+        value: project.id,
+        label: project.name,
+      }))
+      .sort((a: any, b: any) => a.label.localeCompare(b.label));
+      setProjectDropdownValues(newOptions);
+    } catch (error) { 
+      console.error("Error fetching fetchProjectsDropdownValues:", error)
+    } finally { 
+      setSelectProjectDisabled(false);
+    }
+  }
+
+  const getBoardId = async (projectId: string) => {
+    try {
+      setSelectSprintDisabled(true);
+      const payload = {
+        "project_id" : projectId.toString(),   
+      }
+      const res = await axios.post(`${API_URL}/list_board`, payload);
+      // console.log("Getting board id:", res.data);
+      const boardId = res.data.id;
+      setSelectedBoardId(boardId);
+    } catch (error) { 
+      console.error("Error fetching board id:", error)
+    } finally {
+      setSelectSprintDisabled(false);
+    }
+  }
+
+  const getSprintDropdownValues = async (boardId: string) => {
+    try {
+      setSelectSprintDisabled(true);
+      const payload = {
+        "board_id" : boardId.toString(),
+      }
+      const res = await axios.post(`${API_URL}/sprints`, payload);
+      // console.log("Sprint Dropdown Values:", res.data);
+      const newOptions = res.data.values.map((sprint: any) => ({
+        value: sprint.id,
+        label: sprint.name,
+      }))
+      .sort((a: any, b: any) => a.label.localeCompare(b.label));
+      setSprintDropdownValues(newOptions);
+      setSelectedSprintId(newOptions[0]?.value || "");
+    } catch (error) { 
+      console.error("Error fetching getting sprint values:", error)
+    } finally {
+      setSelectSprintDisabled(false);
+    }
+  }
+
+  const getUserDropdowValues = async (sprintId: string) => {
+    try {
+      const payload = {
+        "sprint_id" : sprintId.toString(),
+      }
+      const res = await axios.post(`${API_URL}/get_users`, payload);
+      // console.log("Users Dropdown Values:", res.data);
+      const newOptions = res.data.users.map((user: any) => ({
+        value: user.user_id,
+        label: user.display_name,
+      }))
+      .sort((a: any, b: any) => a.label.localeCompare(b.label));
+      newOptions.push({value: "all", label: "all"});
+      setUserDropdownValues(newOptions);
+      setSelectedUser('all');
+    } catch (error) { 
+      console.error("Error fetching getting sprint values:", error)
+    }
   }
 
   return (
@@ -59,38 +186,49 @@ export default function Dashboard({ user, onLogout }) {
             <span className="text-xl font-bold">Jira Insights</span>
           </div>
           <div className="ml-auto flex items-center gap-4 overflow-x-auto pb-2 md:pb-0">
-            <Select value={project} onValueChange={setProject}>
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId} disabled={selectProjectDisabled}>  
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select project" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                <SelectItem value="web-app">Web Application</SelectItem>
-                <SelectItem value="mobile-app">Mobile Application</SelectItem>
-                <SelectItem value="api">API Development</SelectItem>
+                {
+                  projectDropdownValues.map((project: any) => (
+                    <SelectItem key={project.value} value={project.value}>
+                      {project.label}
+                    </SelectItem>
+                  ))
+                }
               </SelectContent>
             </Select>
-            <Select value={sprint} onValueChange={setSprint}>
+            <Select value={selectedSprintId} onValueChange={setSelectedSprintId} disabled={selectSprintDisabled}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select sprint" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="current">Current Sprint</SelectItem>
-                <SelectItem value="previous">Previous Sprint</SelectItem>
-                <SelectItem value="all">All Sprints_</SelectItem>
+                {
+                  sprintDropdownValues.map((sprint: any) => (
+                    <SelectItem key={sprint.value} value={sprint.value}>
+                      {sprint.label}
+                    </SelectItem>
+                  ))
+                }
               </SelectContent>
             </Select>
-            <Select value={selectedUser} onValueChange={setSelectedUser}>
+            <Select value={selectedUser} onValueChange={setSelectedUser} disabled={selectUserDisabled}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select user" />
               </SelectTrigger>
               <SelectContent>
+                {
+                  userDropdownValues
+                    .filter((user: any) => user.value !== 'all')
+                    .map((user: any) => (
+                      <SelectItem key={user.value} value={user.value}>
+                        {user.label}
+                      </SelectItem>
+                    ))
+                }
                 <SelectItem value="all">All Users</SelectItem>
-                <SelectItem value="alex">Alex</SelectItem>
-                <SelectItem value="taylor">Taylor</SelectItem>
-                <SelectItem value="jordan">Jordan</SelectItem>
-                <SelectItem value="casey">Casey</SelectItem>
-                <SelectItem value="morgan">Morgan</SelectItem>
               </SelectContent>
             </Select>
             <Select value={dateRange} onValueChange={setDateRange}>
@@ -104,7 +242,7 @@ export default function Dashboard({ user, onLogout }) {
                 <SelectItem value="year">Last year</SelectItem>
               </SelectContent>
             </Select>
-            <FiltersDialog />
+            {/* <FiltersDialog /> */}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -191,7 +329,7 @@ export default function Dashboard({ user, onLogout }) {
           </Card>
         </div>
 
-        <Tabs defaultValue="charts" className="space-y-4">
+        <Tabs defaultValue="charts" className="space-y-4" onValueChange={handleTabChange}>
           <TabsList className="grid grid-cols-6 md:w-auto w-full">
             <TabsTrigger value="charts" className="flex items-center gap-2">
               <PieChart className="h-4 w-4" />
@@ -223,38 +361,47 @@ export default function Dashboard({ user, onLogout }) {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
+                  <CardTitle>Tasks Across Projects</CardTitle>
+                  <CardDescription>Task distribution by project and status</CardDescription>
+                </CardHeader>
+                <CardContent className="h-96">
+                  { projectDropdownValues.length ? (
+                    <TasksAcrossProjects projectsData={projectDropdownValues}/>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a project</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
                   <CardTitle>Tasks Over Time</CardTitle>
                   <CardDescription>Created vs Completed tasks</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <TasksOverTime />
+                <CardContent className="h-96">
+                  { selectedBoardId ? (
+                    <TasksOverTime boardId={selectedBoardId}/>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a project</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Tasks By Status</CardTitle>
-                  <CardDescription>Distribution across statuses</CardDescription>
+                  <CardTitle>User Tasks Across Sprints</CardTitle>
+                  <CardDescription>Task completion by team member over time</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <TasksByStatus />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Tasks By Assignee</CardTitle>
-                  <CardDescription>Task distribution across team members</CardDescription>
-                </CardHeader>
-                <CardContent className="h-80">
-                  <TasksByAssignee />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Issue Types Distribution</CardTitle>
-                  <CardDescription>Breakdown by issue type</CardDescription>
-                </CardHeader>
-                <CardContent className="h-80">
-                  <IssueTypesDistribution />
+                <CardContent className="h-96">
+                  { selectedBoardId ? (
+                    <UserTasksAcrossSprints boardId={selectedBoardId}/>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a project</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -262,22 +409,50 @@ export default function Dashboard({ user, onLogout }) {
 
           <TabsContent value="advanced-charts" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
+              
               <Card>
                 <CardHeader>
-                  <CardTitle>User Tasks Across Sprints</CardTitle>
-                  <CardDescription>Task completion by team member over time</CardDescription>
+                  <CardTitle>Tasks By Status</CardTitle>
+                  <CardDescription>Distribution across statuses</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <UserTasksAcrossSprints />
+                <CardContent className="h-96">
+                  { selectedSprintId ? (
+                    <TasksByStatus sprintId={selectedSprintId} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a sprint</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Tasks Across Projects</CardTitle>
-                  <CardDescription>Task distribution by project and status</CardDescription>
+                  <CardTitle>Tasks By Assignee</CardTitle>
+                  <CardDescription>Task distribution across team members</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <TasksAcrossProjects />
+                <CardContent className="h-96">
+                  { selectedSprintId ? (
+                    <TasksByAssignee sprintId={selectedSprintId} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a sprint</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Issue Types Distribution</CardTitle>
+                  <CardDescription>Breakdown by issue type</CardDescription>
+                </CardHeader>
+                <CardContent className="h-96">
+                  { selectedSprintId ? (
+                    <IssueTypesDistribution sprintId={selectedSprintId} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a sprint</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               <Card>
@@ -285,8 +460,14 @@ export default function Dashboard({ user, onLogout }) {
                   <CardTitle>Sprint Burndown</CardTitle>
                   <CardDescription>Remaining work over sprint duration</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <SprintBurndown />
+                <CardContent className="h-96">
+                  { selectedSprintId ? (
+                    <SprintBurndown sprintId={selectedSprintId} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a sprint</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               <Card>
@@ -294,17 +475,23 @@ export default function Dashboard({ user, onLogout }) {
                   <CardTitle>Velocity Chart</CardTitle>
                   <CardDescription>Completed vs committed story points</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
+                <CardContent className="h-96">
                   <VelocityChart />
                 </CardContent>
               </Card>
-              <Card className="md:col-span-2">
+              <Card className="md:col-span-1">
                 <CardHeader>
                   <CardTitle>Cumulative Flow</CardTitle>
                   <CardDescription>Task status distribution over time</CardDescription>
                 </CardHeader>
-                <CardContent className="h-80">
-                  <CumulativeFlow />
+                <CardContent className="h-96">
+                  { selectedSprintId ? (
+                    <CumulativeFlow sprintId={selectedSprintId} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500 text-center">
+                      <p>Please select a sprint</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
